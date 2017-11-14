@@ -58,3 +58,4 @@ cmake-build-debug/
 *.slo
 httpd
 .libs
+test
