@@ -41,9 +41,16 @@
  *
  */
 
+#ifndef HAVE_CONFIG_H
+#  include "config.h"
+#  undef PACKAGE_NAME
+#  undef PACKAGE_STRING
+#  undef PACKAGE_TARNAME
+#  undef PACKAGE_VERSION
+#endif
+
 #include "apr_lib.h" /* apr_isspace */
 
-#include "ap_config.h"
 #include "httpd.h"
 #include "http_config.h"
 #include "http_core.h"
@@ -108,8 +115,7 @@ static authz_status jwt_check_authorization(request_rec *r,
     const char *auth_line, *auth_scheme;
 
     if (!(conf->jwt_key)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01664)
-                      "No jwt key specified in the configuration");
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01664) "No jwt key specified in the configuration");
         return AUTHZ_DENIED;
     }
 
@@ -125,8 +131,7 @@ static authz_status jwt_check_authorization(request_rec *r,
     auth_scheme = ap_getword(r->pool, &auth_line, ' ');
     if (strcasecmp(auth_scheme, "JWT") && strcasecmp(auth_scheme, "Bearer")) {
         /* Client tried to authenticate using wrong auth scheme */
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01614)
-                      "client used wrong authentication scheme: %s", r->uri);
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01614) "client used wrong authentication scheme: %s", r->uri);
         return AUTHZ_DENIED;
     }
 
