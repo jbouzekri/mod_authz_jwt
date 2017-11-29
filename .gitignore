@@ -98,6 +98,8 @@ dkms.conf
 m4
 config.h
 libtool
+.deps
+Makefile
 
 # project
 .idea
