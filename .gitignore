@@ -108,5 +108,7 @@ cmake-build-debug/
 *.slo
 httpd
 .libs
-test
+misc/*
+!misc/*.c
+!misc/*.md
 authz_jwt.load
