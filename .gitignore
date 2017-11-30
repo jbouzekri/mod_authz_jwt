@@ -109,3 +109,4 @@ cmake-build-debug/
 httpd
 .libs
 test
+authz_jwt.load
