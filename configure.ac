@@ -129,7 +129,7 @@ else
    fi
 
    JWT_CFLAGS="-I${JWT_PATH}/include"
-   JWT_LDFLAGS="-L${JWT_PATH}/libjwt/.libs"
+   JWT_LDFLAGS="-L${JWT_PATH}/libjwt/.libs -Wl,-rpath=${JWT_PATH}/libjwt/.libs"
    JWT_LIBS="-ljwt"
 
    AC_MSG_RESULT(yes)
