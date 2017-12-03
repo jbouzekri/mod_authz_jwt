@@ -64,8 +64,36 @@
 
 typedef struct {
     const char *jwt_key;
+    const char *jwt_alg;
 } authz_jwt_config_rec;
 
+static const char *jwt_alg_str(jwt_alg_t alg)
+{
+    switch (alg) {
+        case JWT_ALG_NONE:
+            return "none";
+        case JWT_ALG_HS256:
+            return "HS256";
+        case JWT_ALG_HS384:
+            return "HS384";
+        case JWT_ALG_HS512:
+            return "HS512";
+        case JWT_ALG_RS256:
+            return "RS256";
+        case JWT_ALG_RS384:
+            return "RS384";
+        case JWT_ALG_RS512:
+            return "RS512";
+        case JWT_ALG_ES256:
+            return "ES256";
+        case JWT_ALG_ES384:
+            return "ES384";
+        case JWT_ALG_ES512:
+            return "ES512";
+        default:
+            return NULL;
+	}
+}
 static void *create_authz_jwt_dir_config(apr_pool_t *p, char *d)
 {
     authz_jwt_config_rec *conf = apr_palloc(p, sizeof(*conf));
@@ -82,6 +110,9 @@ static void *merge_auth_jwt_dir_config(apr_pool_t *p, void *basev, void *overrid
     newconf->jwt_key =
             overrides->jwt_key ? overrides->jwt_key : base->jwt_key;
 
+    newconf->jwt_alg =
+            overrides->jwt_alg ? overrides->jwt_alg : base->jwt_alg;
+
     return newconf;
 }
 
@@ -94,11 +125,23 @@ static const char *set_jwt_key(cmd_parms *cmd, void *config, const char *jwt_key
     return NULL;
 }
 
+static const char *set_jwt_alg(cmd_parms *cmd, void *config, const char *jwt_alg)
+{
+    authz_jwt_config_rec *conf = (authz_jwt_config_rec *)config;
+
+    conf->jwt_alg = jwt_alg;
+
+    return NULL;
+}
+
 static const command_rec authz_jwt_cmds[] =
 {
         AP_INIT_TAKE1("AuthJwtKey", set_jwt_key,
                       (void *)APR_OFFSETOF(authz_jwt_config_rec, jwt_key), OR_AUTHCFG,
                       "Key to decode JWT token"),
+        AP_INIT_TAKE1("AuthJwtAlg", set_jwt_alg,
+                      (void *)APR_OFFSETOF(authz_jwt_config_rec, jwt_alg), OR_AUTHCFG,
+                      "(Optional) algorithm in token"),
         {NULL}
 };
 
@@ -143,6 +186,11 @@ static authz_status jwt_check_authorization(request_rec *r,
     res = jwt_decode(&jwt, auth_line, conf->jwt_key, strlen(conf->jwt_key));
     if (res) {
         jwt_free(jwt);
+        return AUTHZ_DENIED;
+    }
+
+    if (conf->jwt_alg && strcasecmp(jwt_alg_str(jwt_get_alg(jwt)), conf->jwt_alg)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01664) "Token algorithm does not match the expecting one");
         return AUTHZ_DENIED;
     }
 
