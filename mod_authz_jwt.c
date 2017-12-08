@@ -68,6 +68,7 @@ typedef struct {
     const char *jwt_key;
     const char *jwt_alg;
     unsigned int jwt_exp;
+    unsigned long jwt_leway;
 } authz_jwt_config_rec;
 
 static const char *jwt_alg_str(jwt_alg_t alg)
@@ -102,6 +103,7 @@ static void *create_authz_jwt_dir_config(apr_pool_t *p, char *d)
     authz_jwt_config_rec *conf = apr_palloc(p, sizeof(*conf));
 
     conf->jwt_exp = 1;
+    conf->jwt_leway = 0;
     conf->jwt_alg = NULL;
     conf->jwt_key = NULL;
 
@@ -115,14 +117,26 @@ static void *merge_auth_jwt_dir_config(apr_pool_t *p, void *basev, void *overrid
     authz_jwt_config_rec *overrides = overridesv;
 
     newconf->jwt_key =
-            overrides->jwt_key ? overrides->jwt_key : base->jwt_key;
+        overrides->jwt_key ? overrides->jwt_key : base->jwt_key;
 
     newconf->jwt_alg =
-            overrides->jwt_alg ? overrides->jwt_alg : base->jwt_alg;
+        overrides->jwt_alg ? overrides->jwt_alg : base->jwt_alg;
 
     newconf->jwt_exp = overrides->jwt_exp;
 
+    newconf->jwt_leway =
+        overrides->jwt_leway ? overrides->jwt_leway : base->jwt_leway;
+
     return newconf;
+}
+
+static const char *set_jwt_leway(cmd_parms *cmd, void *config, const char *jwt_leway)
+{
+    authz_jwt_config_rec *conf = (authz_jwt_config_rec *)config;
+    
+    conf->jwt_leway = atol(jwt_leway);
+
+    return NULL;
 }
 
 static const char *set_jwt_key(cmd_parms *cmd, void *config, const char *jwt_key)
@@ -163,15 +177,16 @@ static const command_rec authz_jwt_cmds[] =
 {
         AP_INIT_TAKE1("AuthJwtKey", set_jwt_key, NULL, OR_AUTHCFG, "Key to decode JWT token"),
         AP_INIT_TAKE1("AuthJwtAlg", set_jwt_alg, NULL, OR_AUTHCFG, "(Optional) algorithm in token"),
-        AP_INIT_TAKE1("AuthJwtExp", set_jwt_exp, NULL, OR_AUTHCFG, "Enable exp time validation"),
+        AP_INIT_TAKE1("AuthJwtExp", set_jwt_exp, NULL, OR_AUTHCFG, "Enable exp time validation (Default on)"),
+        AP_INIT_TAKE1("AuthJwtLeway", set_jwt_leway, NULL, OR_AUTHCFG,
+                      "The amount of leeway given when decoding access tokens specified as an integer of seconds"
+                      "(Default to 0)"),
         {NULL}
 };
 
 module AP_MODULE_DECLARE_DATA authz_jwt_module;
 
-static authz_status jwt_check_authorization(request_rec *r,
-                                                  const char *require_args,
-                                                  const void *parsed_require_args)
+static authz_status jwt_check_authorization(request_rec *r, const char *require_args, const void *parsed_require_args)
 {
     authz_jwt_config_rec *conf = ap_get_module_config(r->per_dir_config,
                                                       &authz_jwt_module);
@@ -181,7 +196,7 @@ static authz_status jwt_check_authorization(request_rec *r,
 
     /* We need at least a key in the configuration to decode the token */
     if (!(conf->jwt_key)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01664) "JWT : No key in the configuration");
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "JWT : No key in the configuration");
         return AUTHZ_DENIED;
     }
 
@@ -197,7 +212,7 @@ static authz_status jwt_check_authorization(request_rec *r,
     auth_scheme = ap_getword(r->pool, &auth_line, ' ');
     if (strcasecmp(auth_scheme, "JWT") && strcasecmp(auth_scheme, "Bearer")) {
         /* Client tried to authenticate using wrong auth scheme */
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01614) "JWT : wrong authentication scheme: %s", r->uri);
+        ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "JWT : wrong authentication scheme: %s", r->uri);
         return AUTHZ_DENIED;
     }
 
@@ -210,21 +225,21 @@ static authz_status jwt_check_authorization(request_rec *r,
     res = jwt_decode(&jwt, auth_line, conf->jwt_key, strlen(conf->jwt_key));
     if (res) {
         jwt_free(jwt);
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01664) "JWT : unable to decode token");
+        ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "JWT : unable to decode token");
         return AUTHZ_DENIED;
     }
 
     /* Verify algorithm if alg check enabled */
     if (conf->jwt_alg && strcasecmp(jwt_alg_str(jwt_get_alg(jwt)), conf->jwt_alg)) {
         jwt_free(jwt);
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01664) "JWT : algorithm does not match the expecting one");
+        ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "JWT : algorithm does not match the expecting one");
         return AUTHZ_DENIED;
     }
 
     /* Verify expiration date if exp check enabled */
-    if (conf->jwt_exp && jwt_get_grant_int(jwt, "exp") < apr_time_sec(r->request_time)) {
+    if (conf->jwt_exp && (jwt_get_grant_int(jwt, "exp") + conf->jwt_leway) < apr_time_sec(r->request_time)) {
         jwt_free(jwt);
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01664) "JWT : token has expired");
+        ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "JWT : token has expired");
         return AUTHZ_DENIED;
     }
 
